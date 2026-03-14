@@ -250,3 +250,55 @@ def plot_results_overview(
     )
     timeline = plot_maneuver_timeline(results)
     return scene, timeline
+
+
+def plot_real_catalog_scene(
+    propagated_objects: Sequence[dict],
+    tracked_objects: Optional[Sequence[dict]] = None,
+    title: str = "Real CelesTrak Catalog Snapshot",
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot propagated real-catalog objects and optional sampled tracks."""
+
+    fig = plt.figure(figsize=(11, 10))
+    ax = fig.add_subplot(111, projection="3d")
+
+    plot_earth(ax)
+
+    positions = np.asarray(
+        [entry["position_km"] for entry in propagated_objects],
+        dtype=float,
+    )
+    if len(positions):
+        ax.scatter(
+            positions[:, 0],
+            positions[:, 1],
+            positions[:, 2],
+            s=16,
+            color="#22c55e",
+            alpha=0.55,
+            label="Catalog objects",
+        )
+
+    if tracked_objects:
+        for tracked in tracked_objects:
+            track = np.asarray(tracked["track_km"], dtype=float)
+            ax.plot(
+                track[:, 0],
+                track[:, 1],
+                track[:, 2],
+                linewidth=1.6,
+                label=tracked["name"],
+            )
+
+    all_points = [positions] if len(positions) else [np.array([[Earth.R.to_value(u.km), 0.0, 0.0]])]
+    if tracked_objects:
+        all_points.extend(np.asarray(item["track_km"], dtype=float) for item in tracked_objects)
+
+    _set_equal_axes(ax, np.vstack(all_points))
+    ax.set_title(title)
+    ax.set_xlabel("X (km)")
+    ax.set_ylabel("Y (km)")
+    ax.set_zlabel("Z (km)")
+    ax.legend(loc="upper left")
+
+    return fig, ax
