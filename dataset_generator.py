@@ -46,11 +46,50 @@ def _required_delta_v(min_distance_km: float, collision_threshold_km: float) -> 
     return shortfall * 0.1
 
 
+def _nearby_debris_orbit(
+    satellite_orbit: Orbit,
+    rng: np.random.Generator,
+    collision_threshold_km: float,
+) -> Orbit:
+    """Create a debris orbit intentionally near the satellite orbit."""
+
+    sat_r = satellite_orbit.r.to_value(u.km)
+    sat_v = satellite_orbit.v.to_value(u.km / u.s)
+
+    for _ in range(50):
+        radial_distance = rng.uniform(0.05 * collision_threshold_km, 0.8 * collision_threshold_km)
+        direction = rng.normal(size=3)
+        direction = direction / np.linalg.norm(direction)
+        relative_position = radial_distance * direction
+
+        relative_velocity = rng.normal(loc=0.0, scale=0.01, size=3)
+        debris_r = (sat_r + relative_position) * u.km
+        debris_v = (sat_v + relative_velocity) * u.km / u.s
+
+        try:
+            return Orbit.from_vectors(
+                Earth,
+                debris_r,
+                debris_v,
+                epoch=satellite_orbit.epoch,
+            )
+        except Exception:
+            continue
+
+    return generate_debris(
+        n_objects=1,
+        altitude_range_km=(450.0, 900.0),
+        epoch=satellite_orbit.epoch,
+        random_state=int(rng.integers(0, 2**32 - 1)),
+    )[0]
+
+
 def generate_conjunction_dataset(
     output_csv: str | Path,
     n_samples: int = 5000,
     time_window: u.Quantity = 45.0 * u.min,
-    collision_threshold_km: float = 1.0,
+    collision_threshold_km: float = 25.0,
+    positive_scenario_fraction: float = 0.35,
     random_state: Optional[int] = None,
 ) -> list[dict]:
     """Generate a supervised-learning dataset of conjunction scenarios.
@@ -66,11 +105,20 @@ def generate_conjunction_dataset(
 
     for sample_index in range(n_samples):
         satellite_orbit = _random_satellite_orbit(rng)
-        debris_orbit = generate_debris(
-            n_objects=1,
-            epoch=satellite_orbit.epoch,
-            random_state=int(rng.integers(0, 2**32 - 1)),
-        )[0]
+        if rng.random() < positive_scenario_fraction:
+            debris_orbit = _nearby_debris_orbit(
+                satellite_orbit,
+                rng,
+                collision_threshold_km=collision_threshold_km,
+            )
+            scenario_type = "near_conjunction"
+        else:
+            debris_orbit = generate_debris(
+                n_objects=1,
+                epoch=satellite_orbit.epoch,
+                random_state=int(rng.integers(0, 2**32 - 1)),
+            )[0]
+            scenario_type = "background"
 
         relative_position = (debris_orbit.r - satellite_orbit.r).to(u.km).value
         relative_velocity = (debris_orbit.v - satellite_orbit.v).to(u.km / u.s).value
@@ -96,6 +144,7 @@ def generate_conjunction_dataset(
                 "time_to_conjunction": float(closest_approach["tca_offset_s"]),
                 "sat_altitude": float(sat_altitude),
                 "debris_altitude": float(debris_altitude),
+                "scenario_type": scenario_type,
                 "collision_risk": int(min_distance <= collision_threshold_km),
                 "required_delta_v": float(
                     _required_delta_v(min_distance, collision_threshold_km)
@@ -116,6 +165,7 @@ def generate_conjunction_dataset(
         "time_to_conjunction",
         "sat_altitude",
         "debris_altitude",
+        "scenario_type",
         "collision_risk",
         "required_delta_v",
     ]

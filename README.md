@@ -152,6 +152,18 @@ Notes
 - Because debris is randomly generated, different runs can produce different conjunction behavior.
 - The CSV dataset is useful for later machine learning or statistical analysis, but the labels are still based on the assumptions of this simulator.
 
+ML Workflow and 
+---------------------------
+The ML section trains a model on physics-generated conjunction scenarios so that future risky encounters can be screened quickly. One model predicts whether an encounter is dangerous, and another estimates the approximate delta-v required. The ML model is intended as a fast surrogate layer, while the underlying physics-based simulation remains the authoritative decision-making system.”
+
+What is really going on overall
+
+1. physics generates the truth labels
+2. ML learns patterns from those labels
+3. ML speeds up screening
+4. physics still validates final actions
+
+
 Future Extensions
 -----------------
 Possible future improvements include:
